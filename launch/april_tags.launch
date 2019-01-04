@@ -1,0 +1,14 @@
+<?xml version="1.0"?>
+
+<launch>
+    <!--node pkg="apriltags_tf" type="tf_broadcaster" name="tf_broadcaster" output="screen"/-->
+    <node pkg="uvc_camera" type="uvc_camera_node" name="uvc_camera_node" output="screen"/>
+    <node pkg="image_proc" type="image_proc" name="image_proc" output="screen"/>
+    <node pkg="image_view" type="image_view" name="image_view" output="screen">
+        <remap from="image" to="image_rect_color"/>
+    </node>
+    <include file="$(find apriltags_ros)/launch/test1.launch">
+    </include>
+</launch>
+
+
