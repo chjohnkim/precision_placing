@@ -9,7 +9,7 @@ import moveit_commander
 import moveit_msgs.msg
 import std_msgs.msg 
 import geometry_msgs.msg 
-import roslib; roslib.load_manifest('robotiq_c_model_control')
+import roslib; roslib.load_manifest('robotiq_c_model_control'); roslib.load_manifest('visualization_marker_tutorials')
 from robotiq_c_model_control.msg import _CModel_robot_output as outputMsg
 from robotiq_c_model_control.msg import _CModel_robot_input  as inputMsg
 from apriltags_ros.msg import * 
@@ -18,9 +18,11 @@ from std_msgs.msg import *
 from rospy import init_node, is_shutdown
 from dynamixel_msgs.msg import JointState
 from dynamixel_controllers.srv import *
+from visualization_msgs.msg import Marker
+from visualization_msgs.msg import MarkerArray
 
 ##___GLOBAL VARIABLES___###
-velocity = 0.05 #velocity scaling factor (0, 1.0] - Safe value for a real robot is ~0.05
+velocity = 0.3 #velocity scaling factor (0, 1.0] - Safe value for a real robot is ~0.05
 #Dynamixel
 goal_pos = float;
 goal_speed = 1.0;
@@ -41,8 +43,129 @@ length_pub = rospy.Publisher('length_value', Float32, queue_size = 10)
 tf_listener = tf.TransformListener()
 tf_broadcaster = tf.TransformBroadcaster()
 dynamixel_pub = rospy.Publisher('tilt_controller/command', Float64, queue_size=10)
+marker_pub = rospy.Publisher('visualization_marker_array', MarkerArray)
 
 
+
+
+#############################################################################################################################################################################################################
+####____MARKER____####
+#############################################################################################################################################################################################################
+def waypoints_marker(waypoints, color='red', assign_id = 0):
+    markerArray = MarkerArray()
+
+    count = 0
+    MARKERS_MAX = 10000
+
+    for i in range(len(waypoints)):
+        
+        waypoint_position = [waypoints[i].position.x, waypoints[i].position.y, waypoints[i].position.z, 1] 
+        waypoint_orientation = [waypoints[i].orientation.x, waypoints[i].orientation.y, waypoints[i].orientation.z, waypoints[i].orientation.w]  
+                
+        marker = Marker()
+        marker.header.frame_id = "/world"
+        marker.type = marker.ARROW
+        marker.action = marker.ADD
+        marker.scale.x = 0.05
+        marker.scale.y = 0.001
+        marker.scale.z = 0.001
+        if color is 'red':
+            marker.color.a = 1.0
+            marker.color.r = 1.0
+            marker.color.g = 0.0
+            marker.color.b = 0.0
+        elif color is 'green':
+            marker.color.a = 1.0
+            marker.color.r = 0.0
+            marker.color.g = 1.0
+            marker.color.b = 0.0
+        elif color is 'blue':
+            marker.color.a = 1.0
+            marker.color.r = 0.0
+            marker.color.g = 0.0
+            marker.color.b = 1.0
+ 	elif color is 'yellow':
+            marker.color.a = 1.0
+            marker.color.r = 1.0
+            marker.color.g = 1.0
+            marker.color.b = 0.0
+	marker.pose.orientation.x = waypoint_orientation[0]
+	marker.pose.orientation.y = waypoint_orientation[1]
+	marker.pose.orientation.z = waypoint_orientation[2]
+        marker.pose.orientation.w = waypoint_orientation[3]
+        marker.pose.position.x = waypoint_position[0]
+        marker.pose.position.y = waypoint_position[1] 
+        marker.pose.position.z = waypoint_position[2] 
+
+        # We add the new marker to the MarkerArray, removing the oldest
+        # marker from it when necessary
+        if(count > MARKERS_MAX):
+            markerArray.markers.pop(0)
+
+        markerArray.markers.append(marker)
+
+        # Renumber the marker IDs
+        id = assign_id
+        for m in markerArray.markers:
+            m.id = id
+            id += 1
+
+        # Publish the MarkerArray
+        marker_pub.publish(markerArray)
+        count += 1
+
+        #rospy.sleep(0.01)
+
+def reference_marker(position, color='red', assign_id = 0):
+    markerArray = MarkerArray()
+    count = 0
+    MARKERS_MAX = 10000
+    marker = Marker()
+    marker.header.frame_id = "/world"
+    marker.type = marker.SPHERE
+    marker.action = marker.ADD
+    marker.scale.x = 0.02
+    marker.scale.y = 0.02
+    marker.scale.z = 0.02
+    if color is 'red':
+        marker.color.a = 1.0
+        marker.color.r = 1.0
+        marker.color.g = 0.0
+        marker.color.b = 0.0
+    elif color is 'green':
+        marker.color.a = 1.0
+        marker.color.r = 0.0
+        marker.color.g = 1.0
+        marker.color.b = 0.0
+    elif color is 'blue':
+        marker.color.a = 1.0
+        marker.color.r = 0.0
+        marker.color.g = 0.0
+        marker.color.b = 1.0
+    elif color is 'yellow':
+        marker.color.a = 1.0
+        marker.color.r = 1.0
+        marker.color.g = 1.0
+        marker.color.b = 0.0
+    marker.pose.orientation.w = 1.0
+    marker.pose.position.x = position[0]
+    marker.pose.position.y = position[1] 
+    marker.pose.position.z = position[2] 
+
+    # We add the new marker to the MarkerArray, removing the oldest
+    # marker from it when necessary
+    if(count > MARKERS_MAX):
+        markerArray.markers.pop(0)
+    markerArray.markers.append(marker)
+    # Renumber the marker IDs
+    id = assign_id
+    for m in markerArray.markers:
+        m.id = id
+        id += 1
+
+    # Publish the MarkerArray
+    marker_pub.publish(markerArray)
+    count += 1
 
 #############################################################################################################################################################################################################
 ####____GRIPPER CONTROL____####
@@ -156,7 +279,7 @@ def pickup(command, distance, vel):
 
 
 ###___FORCE SEEK___###
-def force_seek2(axis_world, distance, force_direction, sensitivity, final_offset, vel):
+def force_seek(axis_world, distance, force_direction, sensitivity, final_offset, vel):
     resolution = 0.05 #resolution is interpreted as 1/resolution = number of interpolated points in the path
     pose_target = group.get_current_pose().pose
     x_1 = pose_target.position.x
@@ -365,13 +488,16 @@ def track_apriltag(tag_id, tag_frame_name, offset_x, offset_y, offset_z):
   
 
 
+
+
+
 #############################################################################################################################################################################################################
 ####____REGRASP____####
 #############################################################################################################################################################################################################
 
 ###___REGRASP FUNCTION7 (CARD REGRASP)___###
 ## This regrasp function is modified such that psi can reach all the way to 90 degrees in one go  
-def regrasp7(theta, length, psi_target, object_width, axis, direction, tilt_axis, tilt_dierction, command):
+def regrasp(theta, length, psi_target, object_width, axis, direction, tilt_axis, tilt_dierction, command):
     finger_length = 0.2765  ##<----------------------------------------------------------------------------------------------------------------------AROUND 0.280
     pose_target = group.get_current_pose().pose
     pose_position = [pose_target.position.x, pose_target.position.y, pose_target.position.z]
@@ -383,7 +509,7 @@ def regrasp7(theta, length, psi_target, object_width, axis, direction, tilt_axis
     rpy_initial = group.get_current_rpy()
     
     rpy_initial = [math.degrees(rpy_initial[0]),math.degrees(rpy_initial[1]), math.degrees(rpy_initial[2])]
-    print 'initial Pose: ', pose_target
+    #print 'initial Pose: ', pose_target
     waypoints = []
     waypoints.append(pose_target)
     psi_current = 0.0
@@ -448,7 +574,7 @@ def regrasp7(theta, length, psi_target, object_width, axis, direction, tilt_axis
         position = int((width - 147.41)/(-0.6783))
         gposition(pub, command, position) #increment gripper width
         
-        print opposite
+        #print opposite
     return [width/1000, opposite/1000]
 
 
@@ -456,7 +582,7 @@ def regrasp7(theta, length, psi_target, object_width, axis, direction, tilt_axis
 #############################################################################################################################################################################################################
 ####____TUCK____####
 #############################################################################################################################################################################################################
-def rotate_tuck(angle_degree, opposite):
+def tuck(angle_degree, opposite):
     
     finger_length = 0.2765  ##<----------------------------------------------------------------------------------------------------------------------AROUND 0.280
     pose_target = group.get_current_pose().pose
@@ -472,7 +598,7 @@ def rotate_tuck(angle_degree, opposite):
     PointB_world = numpy.matmul(world2eelink_matrix, PointB_eelink) #Caculate coordinate of point B w.r.t. /world
     print pose_target
     print PointB_world[2], PointB_world[0]
-    TurnArcAboutAxis_2('y', PointB_world[2], PointB_world[0], angle_degree, -1, 'yes', 'y', 1)
+    tilt('y', PointB_world[2], PointB_world[0], angle_degree, -1, 'yes', 'y', 1)
     
 #############################################################################################################################################################################################################
 ####____TILT____####
@@ -480,7 +606,7 @@ def rotate_tuck(angle_degree, opposite):
 ## Turns about a reference center point in path mode or tilt mode 
 ## User specifies axis:['x'/'y'/'z'], Center of Circle: [y,z / z,x / x,y], Arc turn angle: [degrees], Direction: [1/-1], Tilt Mode: ['yes'/'no'], End_effector tilt axis: ['x'/'y'/'z'], Tilt direction: [1/-1] 
 
-def TurnArcAboutAxis_2(axis, CenterOfCircle_1, CenterOfCircle_2, angle_degree, direction, tilt, tilt_axis, tilt_direction):
+def tilt(axis, CenterOfCircle_1, CenterOfCircle_2, angle_degree, direction, tilt, tilt_axis, tilt_direction):
     rospy.sleep(0.5)
     pose_target = group.get_current_pose().pose #create a pose variable. The parameters can be seen from "$ rosmsg show Pose"
     waypoints = []
@@ -557,17 +683,17 @@ def TurnArcAboutAxis_2(axis, CenterOfCircle_1, CenterOfCircle_2, angle_degree, d
 
 
 
-###___TurnArcAboutAxis for Battery Inesrtion___###
+###___Tilt for Battery Inesrtion___###
 ## This function is made to overcome a singularity point and also for automation of battery insertion routine 
-def TurnArc_Battery(offset, axis, angle_degree, direction, tilt_axis, tilt_direction):
+def tilt_v2(offset, axis, angle_degree, direction, tilt_axis, tilt_direction):
     #offset = 0.28 # Offset of the reference turning point with respect x-axis downards from the ee_link origin 
     pose = group.get_current_pose()
     CenterOfCircle_1 = pose.pose.position.z-offset
     CenterOfCircle_2 = pose.pose.position.x
-    TurnArcAboutAxis_Battery(axis, CenterOfCircle_1, CenterOfCircle_2, angle_degree-1, direction, 'yes', tilt_axis, tilt_direction)
+    tilt_v2_subfunction(axis, CenterOfCircle_1, CenterOfCircle_2, angle_degree-1, direction, 'yes', tilt_axis, tilt_direction)
     return [CenterOfCircle_1, CenterOfCircle_2]
 
-def TurnArcAboutAxis_Battery(axis, CenterOfCircle_1, CenterOfCircle_2, angle_degree, direction, tilt, tilt_axis, tilt_direction):
+def tilt_v2_subfunction(axis, CenterOfCircle_1, CenterOfCircle_2, angle_degree, direction, tilt, tilt_axis, tilt_direction):
     rospy.sleep(0.5)
     pose_target = group.get_current_pose().pose #create a pose variable. The parameters can be seen from "$ rosmsg show Pose"
     waypoints = []
@@ -646,7 +772,7 @@ def TurnArcAboutAxis_Battery(axis, CenterOfCircle_1, CenterOfCircle_2, angle_deg
 #############################################################################################################################################################################################################
 
 ###___PUSHSLIDE___###
-def pushslide(command):
+def push_slide(command):
     finger_length = 0.2765  ##<----------------------------------------------------------------------------------------------------------------------AROUND 0.280
     pose_target = group.get_current_pose().pose
     waypoints = []
@@ -855,28 +981,27 @@ def manipulator_arm_control():
 #    relative_joint_value(0, -math.pi/2, 0, 0, 0, 0)
 #    relative_joint_value(0, 0, -3*math.pi/4, 0, 0, 0)
 #    relative_joint_value(0, 0, 0, -3*math.pi/4, 0, 0)
-#    relative_joint_value(0, 0, 0, 0, -math.pi/2, 0)
-#    assign_pose_target(-0.52, 0.1166, 0.22434, 0.0, 0.707, -0.707, 0.0) # REAL ROBOT ENVIRONMENT    
+#    relative_joint_value(0, 0, 0, 0, -math.pi/2, 0) 
 
 
 ###___CARD INSERTION ROUTINE___###
 ##################################################################################################
 ###___PICK UP CARD ROUTINE___###
-    object_length = 0.0853 #object total length in meters
-    object_width = 0.005
-    delta_0 = 0.035 #insertion length in meters
-    theta_0 = 40 #target theta
-    psi_0 = 20
-    #offset = 0.2765 + object_length - delta_0  
-    offset = 0.2845 + object_length - delta_0  #Offset for new fingers
-    command = gactive(pub)
-    rospy.sleep(0.5) 
-    gposition(pub, command, 215)
+#    object_length = 0.0853 #object total length in meters
+#    object_width = 0.005
+#    delta_0 = 0.035 #insertion length in meters
+#    theta_0 = 40 #target theta
+#    psi_0 = 20
+#    #offset = 0.2765 + object_length - delta_0  
+#    offset = 0.2845 + object_length - delta_0  #Offset for new fingers
+#    command = gactive(pub)
+#    rospy.sleep(0.5) 
+#    gposition(pub, command, 215)
 #    assign_joint_value(0.025, -2.114, -1.034, -4.706, -1.569, 1.597)  #WIDE VIEW POSITION
 #    rospy.sleep(1)
 #    track_apriltag(6, '/tag_6', -0.038, 0.024, 0.40)
 #    rospy.sleep(1)
-#    force_seek2('z', -0.1, 'z', 5, 0.003, 0.01)
+#    force_seek('z', -0.1, 'z', 5, 0.003, 0.01)
 #    pickup(command, -delta_0, 0.05)
 
 
@@ -884,42 +1009,211 @@ def manipulator_arm_control():
 #    assign_joint_value(0.025, -2.114, -1.034, -4.706, -1.569, 1.597) # WIDE VIEW POSITION    
 #    track_apriltag(5, '/tag_5', -0.10, 0.0195, 0.405)
 #    rospy.sleep(1)
-#    force_seek2('z', -0.1, 'z', 5, 0.002, 0.01)
+#    force_seek('z', -0.1, 'z', 5, 0.002, 0.01)
 #    rospy.sleep(1)
-#    force_seek2('x', -0.1, 'x', 5, 0.001, 0.01)
-#    pivot = TurnArc_Battery(offset, 'y', 90-theta_0, 1, 'y', 1)
+#    force_seek('x', -0.1, 'x', 5, 0.001, 0.01)
+#    pivot = tilt_v2(offset, 'y', 90-theta_0, 1, 'y', 1)
 #    rospy.sleep(1)
-#    [width, opposite] = regrasp7(theta_0, delta_0, 70, object_width, 'y', 1, 'y', 1, command)
+#    [width, opposite] = regrasp(theta_0, delta_0, 70, object_width, 'y', 1, 'y', 1, command)
 #    rospy.sleep(1)
-#    TurnArcAboutAxis_2('y', pivot[0], pivot[1], 20, 1, 'yes', 'y', 1)
-#    rotate_tuck(10, 0)
+#    tilt('y', pivot[0], pivot[1], 20, 1, 'yes', 'y', 1)
+#    tuck(10, 0)
 #    rospy.sleep(0.5)    
 #    assign_joint_value(0.025, -2.114, -1.034, -4.706, -1.569, 1.597)
 ################################################################################################
     
 
    
-################################################################################################
+#####EXPERIMENT PUSH SLIDE FOR ROBOT MANIPULATION
+#    object_length = 0.0853 #object total length in meters
+#    object_width = 0.005
+#    delta_0 = 0.035 #insertion length in meters
+#    theta_0 = 40 #target theta
+#    psi_0 = 20
+#    #offset = 0.2765 + object_length - delta_0  
+#    offset = 0.2845 + object_length - delta_0  #Offset for new fingers
+#    command = gactive(pub)
+#    rospy.sleep(0.5) 
+#    gposition(pub, command, 215)
+#    assign_joint_value(-0.1418, -1.9215, -1.6372, -4.2984, -1.5724, 1.4292)
+#    rospy.sleep(1)
+#    force_seek('z', -0.1, 'z', 5, 0.003, 0.01)
+#    pickup(command, -delta_0+0.008, 0.05)
+#    assign_joint_value(-0.4219, -2.0900, -1.4667, -4.3044, -1.5679, 1.1467)
+#    rospy.sleep(1)
+#    force_seek('z', -0.1, 'z', 5, 0.002, 0.01)
+#    pivot = tilt_v2(offset+0.006, 'y', 90-theta_0, 1, 'y', 1)
+#    rospy.sleep(1)
+#    [width, opposite] = regrasp(theta_0, delta_0, psi_0, object_width, 'y', 1, 'y', 1, command)
+#    rospy.sleep(1)
+#    velocity = 0.01
+#    tilt('y', pivot[0], pivot[1], 22, 1, 'yes', 'y', -1)
+#    velocity = 0.0001
+#    push_slide(command)
 
-    assign_joint_value(-0.1418, -1.9215, -1.6372, -4.2984, -1.5724, 1.4292)
-    rospy.sleep(1)
-    force_seek2('z', -0.1, 'z', 5, 0.003, 0.01)
-    pickup(command, -delta_0+0.008, 0.05)
-    assign_joint_value(-0.4219, -2.0900, -1.4667, -4.3044, -1.5679, 1.1467)
-    rospy.sleep(1)
-    force_seek2('z', -0.1, 'z', 5, 0.002, 0.01)
-    pivot = TurnArc_Battery(offset+0.006, 'y', 90-theta_0, 1, 'y', 1)
-    rospy.sleep(1)
-    [width, opposite] = regrasp7(theta_0, delta_0, psi_0, object_width, 'y', 1, 'y', 1, command)
-    rospy.sleep(1)
-    velocity = 0.01
-    TurnArcAboutAxis_2('y', pivot[0], pivot[1], 22, 1, 'yes', 'y', -1)
-    velocity = 0.0001
-    pushslide(command)
+#####################################################################################################
 
-#    manipulator_status() #debug
-#    rospy.spin()
+    object_length = 0.0853 #object total length in meters
+    object_width = 0.005
+    delta_0 = 0.035 #insertion length in meters
+    theta_0 = 30 #target theta
+    psi_0 = 90
+    offset = 0.2845 + object_length - delta_0  #Offset for new fingers
+    command = gactive(pub)
+    assign_joint_value(0.025, -2.114, -1.034, -4.706, -1.569, 1.597) # WIDE VIEW POSITION 
+    rospy.sleep(0.1)
+    contact_G = tilt_v2(offset, 'y', 90-theta_0, 1, 'y', 1)
+    [width, opposite] = regrasp_tilt(theta_0, delta_0, psi_0, object_width, 'y', 1, 'y', 1, contact_G, command)
+    rospy.sleep(2)
+    reference_marker([contact_G[1], 0.14474, contact_G[0]], color='red', assign_id = 1000)
+    
 
+
+
+    #manipulator_status() #debug
+    rospy.spin()
+
+
+
+
+
+
+##REGRASP-TILT###############################################################################################################################################################
+def regrasp_tilt(theta, length, psi_target, object_width, axis, direction, tilt_axis, tilt_dierction, contact_G, command):
+    finger_length = 0.2765  ##<----------------------------------------------------------------------------------------------------------------------AROUND 0.280
+    pose_target = group.get_current_pose().pose
+    pose_position = [pose_target.position.x, pose_target.position.y, pose_target.position.z]
+    pose_orientation = [pose_target.orientation.x, pose_target.orientation.y, pose_target.orientation.z, pose_target.orientation.w]  
+    world2eelink_matrix = tf_listener.fromTranslationRotation(pose_position, pose_orientation) #change base2eelink from transform to matrix
+    PointA_eelink = [finger_length, -object_width/2-object_width/4, 0, 1] ##<----------------------------------------------------------------------------TESTING
+    PointA_world = numpy.matmul(world2eelink_matrix, PointA_eelink) #Caculate coordinate of point A w.r.t. /world
+    
+    rpy_initial = group.get_current_rpy()
+    
+    rpy_initial = [math.degrees(rpy_initial[0]),math.degrees(rpy_initial[1]), math.degrees(rpy_initial[2])]
+    regrasp_waypoints = []
+    regrasp_waypoints.append(pose_target)
+    psi_current = 0.0
+    while psi_current < psi_target: 
+        #Calculate width
+        a = length * math.cos(math.radians(psi_current))
+        b = length * math.sin(math.radians(psi_current))
+        c = object_width * math.cos(math.radians(psi_current))
+        d = object_width * math.sin(math.radians(psi_current))
+        opposite = a - d
+        width = b + c
+        
+        #Calculate orientation
+        rpy_target = [rpy_initial[0], rpy_initial[1]+psi_current, rpy_initial[2]]
+        rpy_target = [math.radians(rpy_target[0]), math.radians(rpy_target[1]), math.radians(rpy_target[2])] 
+        quaternion_target = tf.transformations.quaternion_from_euler(rpy_target[0], rpy_target[1], rpy_target[2])
+        #Calculate position 
+        if theta + psi_current <= 90:
+            x = PointA_world[0] + math.fabs(finger_length*math.cos(math.radians(theta + psi_current))) + math.fabs((width/2)*math.sin(math.radians(theta+psi_current)))
+            z = PointA_world[2] + math.fabs(finger_length*math.sin(math.radians(theta + psi_current))) - math.fabs((width/2)*math.cos(math.radians(theta+psi_current)))
+        elif theta + psi_current > 90:
+            x = PointA_world[0] - math.fabs(finger_length*math.sin(math.radians(theta + psi_current-90))) + math.fabs((width/2)*math.cos(math.radians(theta+psi_current-90)))
+            z = PointA_world[2] + math.fabs(finger_length*math.cos(math.radians(theta + psi_current-90))) + math.fabs((width/2)*math.sin(math.radians(theta+psi_current-90)))
+            
+             
+        
+        #Store Values
+        pose_target.position.x = x - object_width*psi_current/psi_target #<-------------------------------------------------------------------------------TESTING
+        pose_target.position.z = z
+        pose_target.orientation.x = quaternion_target[0]
+        pose_target.orientation.y = quaternion_target[1]
+        pose_target.orientation.z = quaternion_target[2]
+        pose_target.orientation.w = quaternion_target[3]
+        regrasp_waypoints.append(copy.deepcopy(pose_target))
+        psi_current += 0.5
+    
+    del regrasp_waypoints[0]
+    
+      
+    #Construct a transform matrix that can rotate the regrasp_waypoints according to tiliting about contact G
+    transform = tf.transformations.identity_matrix()
+    # <u,v,w> is a unit vector to rotate about the line that passes through the point (x,y,z)
+    [x, y, z] = [contact_G[1], 0, contact_G[0]]
+    [u, v, w] = [0, 1, 0]
+    new_waypoints = []
+    pose_target = group.get_current_pose().pose
+    new_waypoints.append(pose_target)
+    for i in range(len(regrasp_waypoints)):
+        desired = (float(theta)/float(len(regrasp_waypoints)))*i 
+        transform[0][0] = u**2 + (v**2+w**2)*math.cos(math.radians(desired))
+        transform[1][0] = u*v*(1-math.cos(math.radians(desired)))+w*math.sin(math.radians(desired)) 
+        transform[2][0] = u*w*(1-math.cos(math.radians(desired)))-v*math.sin(math.radians(desired))
+        transform[3][0] = 0 
+        transform[0][1] = u*v*(1-math.cos(math.radians(desired)))-w*math.sin(math.radians(desired))
+        transform[1][1] = v**2 + (u**2+w**2)*math.cos(math.radians(desired))
+        transform[2][1] = v*w*(1-math.cos(math.radians(desired)))+u*math.sin(math.radians(desired))
+        transform[3][1] = 0
+        transform[0][2] = u*w*(1-math.cos(math.radians(desired)))+v*math.sin(math.radians(desired))
+        transform[1][2] = v*w*(1-math.cos(math.radians(desired)))-u*math.sin(math.radians(desired))
+        transform[2][2] = w**2 + (u**2+v**2)*math.cos(math.radians(desired))
+        transform[3][2] = 0
+        transform[0][3] = (x*(v**2+w**2)-u*(y*v+z*w))*(1-math.cos(math.radians(desired)))+(y*w-z*v)*math.sin(math.radians(desired))
+        transform[1][3] = (y*(u**2+w**2)-v*(x*u+z*w))*(1-math.cos(math.radians(desired)))+(z*u-x*w)*math.sin(math.radians(desired))
+        transform[2][3] = (z*(u**2+v**2)-w*(x*u+y*v))*(1-math.cos(math.radians(desired)))+(x*v-y*u)*math.sin(math.radians(desired))
+        transform[3][3] = 1
+
+        waypoint_position = [regrasp_waypoints[i].position.x, regrasp_waypoints[i].position.y, regrasp_waypoints[i].position.z, 1] 
+        waypoint_orientation = [regrasp_waypoints[i].orientation.x, regrasp_waypoints[i].orientation.y, regrasp_waypoints[i].orientation.z, regrasp_waypoints[i].orientation.w]  
+        waypoint_matrix = tf_listener.fromTranslationRotation(waypoint_position, waypoint_orientation) #change base2eelink from transform to matrix
+        #Multily the transform with the regrasp waypoint positions to get new waypoints
+        new_position = numpy.matmul(transform, waypoint_position)
+
+        #Extract 3x3 rotation matrix from transform and regrasp waypoint and multiply to get new waypoint orientation        
+        transform_extracted = [transform[0][:3],transform[1][:3],transform[2][:3]]
+        waypoint_extracted = [waypoint_matrix[0][:3],waypoint_matrix[1][:3],waypoint_matrix[2][:3]]
+        new_orientation_matrix = numpy.matmul(transform_extracted, waypoint_extracted)  
+        
+        new_euler = tf.transformations.euler_from_matrix(new_orientation_matrix)
+        new_quat = tf.transformations.quaternion_from_euler(new_euler[0], new_euler[1], new_euler[2])
+        #CORRECT NEW WAYPOINT TRAJECTORY FOR REGRASPING AND TILITING SIMULTANEIOUSLY
+        pose_target.position.x = new_position[0]
+        pose_target.position.y = new_position[1]
+        pose_target.position.z = new_position[2]
+        pose_target.orientation.x = new_quat[0]
+        pose_target.orientation.y = new_quat[1]
+        pose_target.orientation.z = new_quat[2]
+        pose_target.orientation.w = new_quat[3]
+
+        new_waypoints.append(copy.deepcopy(pose_target))
+
+    del new_waypoints[0]
+
+    #GRIPPER WIDTH CONTROL
+    quat_initial = [regrasp_waypoints[0].orientation.x, regrasp_waypoints[0].orientation.y, regrasp_waypoints[0].orientation.z, regrasp_waypoints[0].orientation.w] 
+    euler_initial = tf.transformations.euler_from_quaternion(quat_initial)     
+    y_initial = math.degrees(euler_initial[1])
+    y_previous = round(y_initial,0)
+    psi_current = 0
+    
+    regrasp_asyncExecute_waypoints(new_waypoints)
+    while psi_target-2  > psi_current: #while psi is less than the desired psi
+        current_pose = group.get_current_pose().pose
+        quat_current = [current_pose.orientation.x, current_pose.orientation.y, current_pose.orientation.z, current_pose.orientation.w]
+        euler_current = tf.transformations.euler_from_quaternion(quat_current)  
+        y_current = round(math.degrees(euler_current[1]), 0)
+        psi_current = psi_target*((y_current-y_initial)/(psi_target-theta))
+#        print y_initial, y_current
+#        if (y_current == y_previous - 1) or (y_current == y_previous + 1):           
+#            psi_current = psi_current + 1
+#            y_previous = y_current
+        a = length*1000 * math.cos(math.radians(psi_current))
+        b = length*1000 * math.sin(math.radians(psi_current))
+        c = object_width*1000 * math.cos(math.radians(psi_current))
+        d = object_width*1000 * math.sin(math.radians(psi_current))
+        opposite = a - d
+        width = b + c
+        position = int((width - 147.41)/(-0.6783))
+        gposition(pub, command, position) #increment gripper width
+       
+    waypoints_marker(new_waypoints, 'blue', 0)
+    waypoints_marker(regrasp_waypoints, 'red', 500)
+    
+    return [width/1000, opposite/1000]
 
 
 ###___MAIN___###
